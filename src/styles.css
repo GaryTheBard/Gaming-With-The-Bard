@@ -62,6 +62,82 @@ body {
   grid-template-columns: 1fr auto;
   align-items: center;
   padding: 0.45rem;
+  position: relative;
+}
+
+.mobile-only {
+  display: none;
+}
+
+.nav-toggle {
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  border-radius: 10px;
+  clip-path: none;
+}
+
+.nav-toggle span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--text);
+  border-radius: 999px;
+  transition: transform 160ms ease, opacity 160ms ease;
+}
+
+.site-header.is-menu-open .nav-toggle span:nth-child(1) {
+  transform: translateY(7px) rotate(45deg);
+}
+
+.site-header.is-menu-open .nav-toggle span:nth-child(2) {
+  opacity: 0;
+}
+
+.site-header.is-menu-open .nav-toggle span:nth-child(3) {
+  transform: translateY(-7px) rotate(-45deg);
+}
+
+.mobile-nav-panel {
+  grid-column: 1 / -1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 0.55rem;
+}
+
+.mobile-nav {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.mobile-nav .nav-pill {
+  display: block;
+  text-align: center;
+}
+
+.mobile-controls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+  margin-top: 0.55rem;
+}
+
+.nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 0;
+  clip-path: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .main-nav {
@@ -760,11 +836,46 @@ label {
 }
 
 @media (max-width: 760px) {
-  .site-header-inner {
-    grid-template-columns: 1fr;
+  .desktop-only {
+    display: none !important;
   }
-  .controls {
-    justify-content: flex-start;
+
+  .mobile-only {
+    display: block;
+  }
+
+  .nav-toggle.mobile-only {
+    display: inline-flex;
+    justify-self: end;
+    position: absolute;
+    right: 0.85rem;
+    top: calc(100% + 0.95rem);
+    z-index: 36;
+  }
+
+  .site-header {
+    margin-bottom: 0;
+  }
+
+  .site-header-inner {
+    border: none;
+    background: transparent;
+    backdrop-filter: none;
+    padding: 0;
+    min-height: 0;
+  }
+
+  .mobile-nav-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4rem);
+    right: 0.85rem;
+    width: min(320px, calc(100vw - 2rem));
+    z-index: 35;
+  }
+
+  .site-header.is-menu-open .mobile-nav-panel {
+    display: block;
   }
   .manager-grid,
   .manager-form {

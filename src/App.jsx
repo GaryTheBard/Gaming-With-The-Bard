@@ -199,10 +199,12 @@ async function createContentRecord(entry) {
     },
     body: JSON.stringify(entry)
   });
+  const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(`Create failed (${response.status})`);
+    const details = payload?.details ? `: ${payload.details}` : "";
+    throw new Error(`${payload?.error || "Create failed"} (${response.status})${details}`);
   }
-  return response.json();
+  return payload;
 }
 
 function getNextImageTokenIndex(body) {
@@ -384,28 +386,88 @@ function ArticleBody({ body }) {
 }
 
 function TopBar({ section, onToggleTheme, onToggleFx, theme, fxEnabled, staticPage = "" }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname, location.search]);
+
+  const sectionLinks = ["all", "review", "article", "videos"].map((value) => ({
+    value,
+    label:
+      value === "all" ? "All" : value === "videos" ? "Videos" : `${value[0].toUpperCase()}${value.slice(1)}s`,
+    to: `/?section=${value}`
+  }));
+
+  function closeMenu() {
+    setMenuOpen(false);
+  }
+
   return (
-    <header className="site-header">
+    <header className={`site-header ${menuOpen ? "is-menu-open" : ""}`}>
       <div className="site-header-inner">
-        <nav className="main-nav">
-          {["all", "review", "article", "videos"].map((value) => (
-            <Link className={`nav-pill ${section === value ? "active" : ""}`} key={value} to={`/?section=${value}`}>
-              {value === "all"
-                ? "All"
-                : value === "videos"
-                  ? "Videos"
-                  : `${value[0].toUpperCase()}${value.slice(1)}s`}
+        <nav className="main-nav desktop-only" aria-label="Primary">
+          {sectionLinks.map((item) => (
+            <Link className={`nav-pill ${section === item.value ? "active" : ""}`} key={item.value} to={item.to}>
+              {item.label}
             </Link>
           ))}
           <Link className={`nav-pill ${staticPage === "how-we-rate" ? "active" : ""}`} to="/how-we-rate">
             How We Rate
           </Link>
         </nav>
-        <div className="controls">
-          <button onClick={onToggleFx}>{fxEnabled ? "FX on" : "FX off"}</button>
-          <button onClick={onToggleTheme}>{theme === "dark" ? "Light mode" : "Dark mode"}</button>
+        <div className="controls desktop-only">
+          <button type="button" onClick={onToggleFx}>
+            {fxEnabled ? "FX on" : "FX off"}
+          </button>
+          <button type="button" onClick={onToggleTheme}>
+            {theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
+        </div>
+        <button
+          className="nav-toggle mobile-only"
+          type="button"
+          aria-expanded={menuOpen}
+          aria-controls="mobile-nav-panel"
+          aria-label={menuOpen ? "Close menu" : "Open menu"}
+          onClick={() => setMenuOpen((open) => !open)}
+        >
+          <span />
+          <span />
+          <span />
+        </button>
+        <div className="mobile-nav-panel mobile-only" id="mobile-nav-panel">
+          <nav className="mobile-nav" aria-label="Mobile primary">
+            {sectionLinks.map((item) => (
+              <Link
+                className={`nav-pill ${section === item.value ? "active" : ""}`}
+                key={`mobile-${item.value}`}
+                to={item.to}
+                onClick={closeMenu}
+              >
+                {item.label}
+              </Link>
+            ))}
+            <Link
+              className={`nav-pill ${staticPage === "how-we-rate" ? "active" : ""}`}
+              to="/how-we-rate"
+              onClick={closeMenu}
+            >
+              How We Rate
+            </Link>
+          </nav>
+          <div className="mobile-controls">
+            <button type="button" onClick={onToggleFx}>
+              {fxEnabled ? "FX on" : "FX off"}
+            </button>
+            <button type="button" onClick={onToggleTheme}>
+              {theme === "dark" ? "Light mode" : "Dark mode"}
+            </button>
+          </div>
         </div>
       </div>
+      {menuOpen ? <button className="nav-backdrop mobile-only" type="button" aria-label="Close menu" onClick={closeMenu} /> : null}
     </header>
   );
 }

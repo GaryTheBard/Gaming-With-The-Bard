@@ -24,16 +24,16 @@ if (isset($data['status']) && !in_array((string) $data['status'], $allowedStatus
 }
 
 $imageUrl = array_key_exists('imageUrl', $data) ? trim((string) $data['imageUrl']) : null;
-$videoUrl = array_key_exists('videoUrl', $data) ? trim((string) $data['videoUrl']) : null;
+$videoUrl = array_key_exists('videoUrl', $data) ? normalize_youtube_url((string) $data['videoUrl']) : null;
 $authorName = array_key_exists('authorName', $data) ? trim((string) $data['authorName']) : null;
 if ($authorName === '') {
     $authorName = null;
 }
-if ($imageUrl !== null && $imageUrl !== '' && filter_var($imageUrl, FILTER_VALIDATE_URL) === false) {
-    respond(['error' => 'Invalid imageUrl'], 400);
+if ($imageUrl !== null && $imageUrl !== '' && !is_valid_http_url($imageUrl)) {
+    respond(['error' => 'Invalid imageUrl. Use a full http:// or https:// URL.'], 400);
 }
-if ($videoUrl !== null && $videoUrl !== '' && filter_var($videoUrl, FILTER_VALIDATE_URL) === false) {
-    respond(['error' => 'Invalid videoUrl'], 400);
+if ($videoUrl !== null && $videoUrl !== '' && !is_valid_http_url($videoUrl)) {
+    respond(['error' => 'Invalid videoUrl. Use a full YouTube URL.'], 400);
 }
 
 try {

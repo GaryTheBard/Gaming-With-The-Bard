@@ -52,12 +52,12 @@ if (!in_array($status, $allowedStatuses, true)) {
 }
 
 $imageUrl = isset($data['imageUrl']) ? trim((string) $data['imageUrl']) : null;
-$videoUrl = isset($data['videoUrl']) ? trim((string) $data['videoUrl']) : null;
-if ($imageUrl !== null && $imageUrl !== '' && filter_var($imageUrl, FILTER_VALIDATE_URL) === false) {
-    respond(['error' => 'Invalid imageUrl'], 400);
+$videoUrl = isset($data['videoUrl']) ? normalize_youtube_url((string) $data['videoUrl']) : null;
+if ($imageUrl !== null && $imageUrl !== '' && !is_valid_http_url($imageUrl)) {
+    respond(['error' => 'Invalid imageUrl. Use a full http:// or https:// URL.'], 400);
 }
-if ($videoUrl !== null && $videoUrl !== '' && filter_var($videoUrl, FILTER_VALIDATE_URL) === false) {
-    respond(['error' => 'Invalid videoUrl'], 400);
+if ($videoUrl !== null && $videoUrl !== '' && !is_valid_http_url($videoUrl)) {
+    respond(['error' => 'Invalid videoUrl. Use a full YouTube URL.'], 400);
 }
 
 try {
@@ -69,7 +69,7 @@ try {
         ) VALUES (
           :type, :title, :author_name, :slug, :excerpt, :body, :image_url, :video_url, :genres_json, :platforms_json, :screenshots_json,
           :related_games_json, :bard_score, :build_quality, :respects_time, :steam_deck, :steam_deck_fps,
-          :status, NOW(), NOW(), CASE WHEN :status = "published" THEN NOW() ELSE NULL END
+          :status, NOW(), NOW(), CASE WHEN :publish_check = "published" THEN NOW() ELSE NULL END
         )'
     );
 
@@ -91,7 +91,8 @@ try {
         ':respects_time' => $data['respectsYourTime'] ?? null,
         ':steam_deck' => isset($data['steamDeck']) ? ((bool) $data['steamDeck'] ? 1 : 0) : 0,
         ':steam_deck_fps' => $data['steamDeckFps'] ?? null,
-        ':status' => $status
+        ':status' => $status,
+        ':publish_check' => $status
     ]);
 
     $id = (int) $conn->lastInsertId();

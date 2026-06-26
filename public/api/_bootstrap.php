@@ -41,6 +41,32 @@ function read_json_body(): array
     return is_array($decoded) ? $decoded : [];
 }
 
+function is_valid_http_url(string $url): bool
+{
+    return (bool) preg_match('/^https?:\/\/.+/i', trim($url));
+}
+
+function normalize_youtube_url(string $url): string
+{
+    $raw = trim($url);
+    if ($raw === '') {
+        return '';
+    }
+    if (str_contains($raw, 'youtube.com/embed/')) {
+        return $raw;
+    }
+    if (preg_match('/youtu\.be\/([^?&\/]+)/i', $raw, $match)) {
+        return 'https://www.youtube.com/embed/' . $match[1];
+    }
+    if (preg_match('/[?&]v=([^?&\/]+)/i', $raw, $match)) {
+        return 'https://www.youtube.com/embed/' . $match[1];
+    }
+    if (preg_match('/^https?:\/\//i', $raw)) {
+        return $raw;
+    }
+    return 'https://' . ltrim($raw, '/');
+}
+
 function db_connect(array $cfg)
 {
     if (($cfg['db_name'] ?? '') === '' || ($cfg['db_user'] ?? '') === '') {
