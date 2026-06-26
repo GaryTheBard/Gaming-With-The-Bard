@@ -1,0 +1,94 @@
+:root {
+  --bg: #0d1017;
+  --panel: #161c2a;
+  --text: #e8ecf6;
+  --muted: #9aa5bf;
+  --accent: #6d7dff;
+  --accent-hover: #5a68df;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.6;
+  background: linear-gradient(180deg, #0d1017 0%, #131b2d 100%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.hero {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 5rem 1.5rem 2rem;
+}
+
+.eyebrow {
+  margin: 0 0 0.4rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.85rem;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3.2rem);
+  line-height: 1.1;
+}
+
+.lead {
+  margin-top: 1rem;
+  max-width: 60ch;
+  color: #c8d1e6;
+}
+
+.primary-cta {
+  display: inline-block;
+  margin-top: 1rem;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  padding: 0.65rem 1rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+}
+
+.primary-cta:hover {
+  background: var(--accent-hover);
+}
+
+.content-grid {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 3rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid #252d3f;
+  border-radius: 0.75rem;
+  padding: 1rem 1rem 0.75rem;
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.card p {
+  color: #c3cbe0;
+}
+
+.site-footer {
+  border-top: 1px solid #222b3d;
+  padding: 1rem 1.5rem 2rem;
+  text-align: center;
+  color: var(--muted);
+}
