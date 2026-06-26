@@ -327,6 +327,22 @@ label {
   color: var(--muted);
 }
 
+.meta-actions {
+  display: inline-flex;
+  gap: 0.5rem;
+}
+
+.admin-login {
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.admin-login input {
+  min-width: 260px;
+}
+
 .api-error {
   margin: 0 0 0.7rem;
   padding: 0.55rem 0.65rem;
@@ -525,6 +541,12 @@ label {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.card-byline {
+  margin: 0.2rem 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.83rem;
 }
 
 .type-pill {

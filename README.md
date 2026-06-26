@@ -16,9 +16,10 @@ The product centers around quick decision-making and trust:
 
 - React + Vite project baseline
 - Search and filtering toolbar
-- Content sections for Reviews, Articles, and Video Reviews
+- Content sections for Reviews, Articles, and Videos (videos are any posts with a linked video URL)
 - Discovery-friendly review card metadata
 - In-app Content Manager to add entries without a rebuild
+- Protected admin route at `/admin` for content publishing
 - Local browser persistence via local storage
 
 ## Run locally
@@ -49,6 +50,9 @@ Upload endpoint:
   - `public/api/content/by-slug.php?slug=...`
   - `public/api/content/create.php`
   - `public/api/content/update.php`
+  - `public/api/auth/login.php`
+  - `public/api/auth/logout.php`
+  - `public/api/auth/session.php`
 
 Runtime upload folder:
 
@@ -65,22 +69,31 @@ VITE_API_WRITE_TOKEN="replace-with-your-token"
 
 Without a reachable PHP endpoint, upload calls will fail and show an inline error.
 
-### PostgreSQL setup (self-managed)
+### MySQL setup (self-managed)
 
-1. Create your Postgres DB.
+1. Create your MySQL DB.
 2. Run schema:
 
 ```bash
-psql -d gaming_with_the_bard -f database/schema.sql
+mysql -u your_user -p gaming_with_the_bard < database/schema.sql
 ```
 
 3. Copy `public/api/config.php.example` to `public/api/config.php` and fill in DB credentials + write token.
 4. Deploy to DreamHost (or your PHP host), ensuring:
-   - PHP `pgsql` extension is enabled
+   - PHP `pdo_mysql` extension is enabled
    - `public/uploads/` is writable by PHP
 
 When `VITE_USE_API="true"`, the app reads/writes content via your PHP API.
 When `false`, it falls back to localStorage.
+
+### Admin access
+
+- Public homepage no longer shows manager controls.
+- Use `/admin` to access the content manager.
+- `/admin` requires password login using `admin_password` in `public/api/config.php`.
+- Create/update/upload endpoints now accept either:
+  - authenticated admin session cookie, or
+  - `X-API-Token` (for scripted writes)
 
 ### Multi-image and screenshot carousel support
 
@@ -90,6 +103,6 @@ When `false`, it falls back to localStorage.
 ## Project structure
 
 - `src/App.jsx` - Main app, filtering, manager UI
-- `src/seedData.js` - Seed content and sample review/article/video entries
+- `src/seedData.js` - Seed content (empty by default for launch readiness)
 - `src/styles.css` - Minimalistic UI styling
 - `src/main.jsx` - App bootstrap

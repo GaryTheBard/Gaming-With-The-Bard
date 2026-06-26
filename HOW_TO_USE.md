@@ -1,6 +1,6 @@
 # Gaming With The Bard - How To Use
 
-This guide explains how to run the app, publish content, upload images, and switch from local mode to your self-managed PostgreSQL + PHP API mode.
+This guide explains how to run the app, publish content, upload images, and switch from local mode to your self-managed MySQL + PHP API mode.
 
 ## 1) Run the app locally
 
@@ -14,15 +14,18 @@ Open the local URL shown in the terminal (usually `http://localhost:5173`).
 ## 2) Core app workflow
 
 - Use top nav to filter by `All`, `Reviews`, `Articles`, `Videos`
+- `Videos` shows posts that include a `YouTube URL` (usually review posts)
 - Use search + filter controls for discovery
 - Click `Read more` to open detail pages
-- Use `Open Manager` to create content
+- Use `/admin` to open the protected manager
 
 ## 3) Content Manager basics
 
+Open `https://your-domain.com/admin` and sign in with your admin password.
+
 Inside manager:
 
-- **Type**: Review / Article / Video
+- **Type**: Review / Article
 - **Title / Summary**: required
 - **Body**: article text (supports media tokens)
 - **Cover image URL**: card/detail hero image
@@ -32,6 +35,7 @@ Review-specific fields:
 
 - Bard score
 - Genres
+- Related games
 - Platforms (multi-checkbox)
 - Steam Deck checkbox
 - Steam Deck FPS text (appears only when Steam Deck is checked)
@@ -103,13 +107,20 @@ In API mode:
 - creates via `POST /api/content/create.php`
 - uploads images via `upload-image.php`
 
-## 8) PostgreSQL + PHP setup (self-managed)
+## 8) MySQL + PHP setup (self-managed)
 
-1. Create Postgres DB.
+1. Create MySQL DB.
 2. Run schema:
 
 ```bash
-psql -d gaming_with_the_bard -f database/schema.sql
+mysql -u your_user -p gaming_with_the_bard < database/schema.sql
+```
+
+If you already deployed an older schema, run this migration once:
+
+```sql
+ALTER TABLE content
+  ADD COLUMN related_games_json JSON NOT NULL AFTER screenshots_json;
 ```
 
 3. Copy:
@@ -117,9 +128,10 @@ psql -d gaming_with_the_bard -f database/schema.sql
 - `public/api/config.php.example` -> `public/api/config.php`
 
 4. Fill DB credentials + API write token in `config.php`.
+   - Also set `admin_password` for `/admin` login.
 5. Deploy to your PHP host (DreamHost).
 6. Ensure:
-   - PHP `pgsql` extension enabled
+   - PHP `pdo_mysql` extension enabled
    - `public/uploads/` writable by PHP
 
 ## 9) Deployment checklist
@@ -130,6 +142,8 @@ psql -d gaming_with_the_bard -f database/schema.sql
 - [ ] `VITE_*` env values set for production build
 - [ ] `uploads` directory writable
 - [ ] API write token set and kept private
+- [ ] Admin password set in `public/api/config.php`
+- [ ] `public/.htaccess` is deployed for SPA routing on Apache/DreamHost
 
 ## 10) Troubleshooting
 

@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { BrowserRouter, Link, Route, Routes, useNavigate, useParams } from "react-router-dom";
-import { seedContent } from "./seedData";
+import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 
 const STORAGE_KEY = "gwtb-content-v1";
 const THEME_KEY = "gwtb-theme-v1";
@@ -16,6 +15,7 @@ const FALLBACK_IMAGE =
 const initialForm = {
   type: "review",
   title: "",
+  authorName: "",
   excerpt: "",
   imageUrl: "",
   videoUrl: "",
@@ -23,10 +23,10 @@ const initialForm = {
   screenshotsRaw: "",
   bardScore: "",
   genres: "",
+  relatedGames: "",
   platforms: [],
   playtimeHours: "",
   difficulty: "Medium",
-  soloFriendly: true,
   steamDeck: false,
   steamDeckFps: ""
 };
@@ -34,10 +34,7 @@ const initialForm = {
 const reviewPlatforms = ["PC", "PS5", "Xbox Series X|S", "Nintendo Switch"];
 
 const initialFilters = {
-  genre: "",
-  maxHours: "",
-  soloOnly: false,
-  controllerOnly: false
+  genre: ""
 };
 
 function readJsonStorage(key, fallback) {
@@ -77,6 +74,7 @@ function readFxEnabled() {
 
 function readDraft() {
   const parsed = readJsonStorage(DRAFT_KEY, initialForm);
+  const normalizedType = parsed.type === "article" ? "article" : "review";
   const normalizedPlatforms = Array.isArray(parsed.platforms)
     ? parsed.platforms
     : typeof parsed.platforms === "string"
@@ -90,6 +88,7 @@ function readDraft() {
   return {
     ...initialForm,
     ...parsed,
+    type: normalizedType,
     platforms: normalizedPlatforms,
     screenshotsRaw: normalizedScreenshots
   };
@@ -130,6 +129,18 @@ function normalizeList(value) {
     .filter(Boolean);
 }
 
+function isHttpUrl(value) {
+  if (!value) {
+    return false;
+  }
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function parseScreenshots(value) {
   return (value || "")
     .split(/\r?\n|,/)
@@ -146,9 +157,42 @@ async function fetchContentList() {
   return Array.isArray(payload.items) ? payload.items : [];
 }
 
+async function fetchAdminSession() {
+  const response = await fetch(`${API_BASE}/auth/session.php`, {
+    credentials: "include"
+  });
+  if (!response.ok) {
+    throw new Error("Failed to check admin session.");
+  }
+  return response.json();
+}
+
+async function loginAdmin(password) {
+  const response = await fetch(`${API_BASE}/auth/login.php`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    credentials: "include",
+    body: JSON.stringify({ password })
+  });
+  if (!response.ok) {
+    throw new Error("Invalid admin password.");
+  }
+  return response.json();
+}
+
+async function logoutAdmin() {
+  await fetch(`${API_BASE}/auth/logout.php`, {
+    method: "POST",
+    credentials: "include"
+  });
+}
+
 async function createContentRecord(entry) {
   const response = await fetch(`${API_BASE}/content/create.php`, {
     method: "POST",
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(API_WRITE_TOKEN ? { "X-API-Token": API_WRITE_TOKEN } : {})
@@ -179,6 +223,7 @@ function normalizeEntry(entry, index) {
     title,
     slug: `${slugBase || "entry"}-${id}`,
     excerpt: entry.excerpt || "No summary yet.",
+    authorName: entry.authorName || "Gaming With The Bard",
     body: entry.body || "",
     imageUrl: entry.imageUrl || FALLBACK_IMAGE,
     platforms: Array.isArray(entry.platforms)
@@ -192,7 +237,11 @@ function normalizeEntry(entry, index) {
         ? normalizeList(entry.screenshots)
         : [],
     genres: Array.isArray(entry.genres) ? entry.genres : [],
-    similarGames: Array.isArray(entry.similarGames) ? entry.similarGames : [],
+    relatedGames: Array.isArray(entry.relatedGames)
+      ? entry.relatedGames
+      : Array.isArray(entry.similarGames)
+        ? entry.similarGames
+        : [],
     createdAt: Number(entry.createdAt || 0)
   };
 }
@@ -206,8 +255,12 @@ function setMeta(title, description) {
 }
 
 function getEntryPath(entry) {
-  const segment = entry.type === "review" ? "reviews" : entry.type === "article" ? "articles" : "videos";
+  const segment = entry.type === "review" ? "reviews" : "articles";
   return `/${segment}/${entry.slug}`;
+}
+
+function hasLinkedVideo(entry) {
+  return Boolean((entry.videoUrl || "").trim());
 }
 
 function parseBodySyntax(rawBody) {
@@ -330,46 +383,23 @@ function ArticleBody({ body }) {
   );
 }
 
-function TopBar({
-  section,
-  onSectionChange,
-  onToggleTheme,
-  onToggleFx,
-  theme,
-  fxEnabled,
-  showHomeLink = false,
-  staticPage = ""
-}) {
+function TopBar({ section, onToggleTheme, onToggleFx, theme, fxEnabled, staticPage = "" }) {
   return (
     <header className="site-header">
       <div className="site-header-inner">
         <nav className="main-nav">
-          {showHomeLink ? (
-            <>
-              <Link className={`nav-pill ${staticPage === "home" ? "active" : ""}`} to="/">
-                Home
-              </Link>
-              <Link className={`nav-pill ${staticPage === "how-we-rate" ? "active" : ""}`} to="/how-we-rate">
-                How We Rate
-              </Link>
-            </>
-          ) : (
-            <>
-              {["all", "review", "article", "video"].map((value) => (
-                <button
-                  className={`nav-pill ${section === value ? "active" : ""}`}
-                  key={value}
-                  onClick={() => onSectionChange(value)}
-                  type="button"
-                >
-                  {value === "all" ? "All" : `${value[0].toUpperCase()}${value.slice(1)}s`}
-                </button>
-              ))}
-              <Link className="nav-pill" to="/how-we-rate">
-                How We Rate
-              </Link>
-            </>
-          )}
+          {["all", "review", "article", "videos"].map((value) => (
+            <Link className={`nav-pill ${section === value ? "active" : ""}`} key={value} to={`/?section=${value}`}>
+              {value === "all"
+                ? "All"
+                : value === "videos"
+                  ? "Videos"
+                  : `${value[0].toUpperCase()}${value.slice(1)}s`}
+            </Link>
+          ))}
+          <Link className={`nav-pill ${staticPage === "how-we-rate" ? "active" : ""}`} to="/how-we-rate">
+            How We Rate
+          </Link>
         </nav>
         <div className="controls">
           <button onClick={onToggleFx}>{fxEnabled ? "FX on" : "FX off"}</button>
@@ -385,15 +415,15 @@ function ContentCard({ entry }) {
     <article className="card">
       <img className="thumb" src={entry.imageUrl} alt={entry.title} />
       <div className="card-body">
-        <p className="type-pill">{entry.type === "video" ? "Video Review" : entry.type}</p>
+        <p className="type-pill">{entry.type}</p>
         <h3 className="card-title">{entry.title}</h3>
+        <p className="card-byline">By {entry.authorName}</p>
         <p className="card-excerpt">{entry.excerpt}</p>
         {entry.type === "review" ? (
           <div className="stats-grid">
             <span>Bard {entry.bardScore ?? "TBD"}</span>
             <span>Build {entry.buildQuality ?? "TBD"}/10</span>
             <span>Time {entry.respectsYourTime ?? "TBD"}</span>
-            <span>Solo {entry.soloFriendly ? "Yes" : "No"}</span>
           </div>
         ) : null}
         <Link className="read-more" to={getEntryPath(entry)}>
@@ -404,7 +434,7 @@ function ContentCard({ entry }) {
   );
 }
 
-function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint }) {
+function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint, isPublishing }) {
   const [uploadState, setUploadState] = useState({ kind: "idle", message: "" });
 
   const previewEntry = {
@@ -413,6 +443,7 @@ function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint })
         id: "preview",
         type: form.type,
         title: form.title || "Preview title",
+        authorName: form.authorName || "Gaming With The Bard",
         excerpt: form.excerpt || "Preview summary text.",
         body: form.body,
         imageUrl: form.imageUrl || FALLBACK_IMAGE,
@@ -440,6 +471,7 @@ function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint })
 
         const response = await fetch(uploadEndpoint, {
           method: "POST",
+          credentials: "include",
           body: payload
         });
 
@@ -502,13 +534,17 @@ function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint })
           <select value={form.type} onChange={(e) => setForm((p) => ({ ...p, type: e.target.value }))}>
             <option value="review">Review</option>
             <option value="article">Article</option>
-            <option value="video">Video Review</option>
           </select>
           <input
             required
             value={form.title}
             onChange={(e) => setForm((p) => ({ ...p, title: e.target.value }))}
             placeholder="Title"
+          />
+          <input
+            value={form.authorName}
+            onChange={(e) => setForm((p) => ({ ...p, authorName: e.target.value }))}
+            placeholder="Author name (defaults to Gaming With The Bard)"
           />
           <textarea
             required
@@ -521,6 +557,7 @@ function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint })
             <input type="file" accept="image/*" multiple onChange={handleImageUpload} />
           </label>
           <textarea
+            required
             value={form.body}
             onChange={(e) => setForm((p) => ({ ...p, body: e.target.value }))}
             placeholder={"Body copy.\n\n[img1]\n\nimg1: https://... | caption"}
@@ -559,6 +596,11 @@ function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint })
                 onChange={(e) => setForm((p) => ({ ...p, genres: e.target.value }))}
                 placeholder="Genres: Soulslike, Roguelike"
               />
+              <input
+                value={form.relatedGames}
+                onChange={(e) => setForm((p) => ({ ...p, relatedGames: e.target.value }))}
+                placeholder="Related games: Hades, Dead Cells"
+              />
               <fieldset className="check-grid">
                 <legend>Platforms</legend>
                 {reviewPlatforms.map((platform) => (
@@ -596,7 +638,9 @@ function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint })
               ) : null}
             </>
           ) : null}
-          <button type="submit">Publish Entry</button>
+          <button type="submit" disabled={isPublishing}>
+            {isPublishing ? "Publishing..." : "Publish Entry"}
+          </button>
         </form>
         <div className="manager-preview">
           <h3>Live Preview</h3>
@@ -624,7 +668,7 @@ function MethodologyPanel() {
         </div>
         <div>
           <h3>Who Is This For?</h3>
-          <p>Targets audience fit by genre expectations, challenge level, and solo-friendliness.</p>
+          <p>Targets audience fit by genre expectations, challenge level, and player preference.</p>
         </div>
         <div>
           <h3>Build Quality</h3>
@@ -647,12 +691,10 @@ function HowWeRatePage({ theme, fxEnabled, onToggleTheme, onToggleFx }) {
     <div className="shell">
       <TopBar
         section="all"
-        onSectionChange={() => {}}
         onToggleTheme={onToggleTheme}
         onToggleFx={onToggleFx}
         theme={theme}
         fxEnabled={fxEnabled}
-        showHomeLink
         staticPage="how-we-rate"
       />
       <section className="detail-panel">
@@ -680,16 +722,11 @@ function HomePage({
   theme,
   fxEnabled,
   onToggleTheme,
-  onToggleFx,
-  managerOpen,
-  setManagerOpen,
-  form,
-  setForm,
-  onPublish,
-  draftSavedAt,
-  uploadEndpoint,
-  apiError
+  onToggleFx
 }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+
   useEffect(() => {
     setMeta(
       "Gaming With The Bard | Reviews and Discovery",
@@ -697,20 +734,39 @@ function HomePage({
     );
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const nextSection = params.get("section");
+    if (nextSection && ["all", "review", "article", "videos"].includes(nextSection)) {
+      setSection(nextSection);
+      return;
+    }
+    setSection("all");
+  }, [location.search, setSection]);
+
   const visibleItems = useMemo(() => {
     const filtered = content
-      .filter((entry) => (section === "all" ? true : entry.type === section))
+      .filter((entry) => {
+        if (section === "all") {
+          return true;
+        }
+        if (section === "videos") {
+          return hasLinkedVideo(entry);
+        }
+        return entry.type === section;
+      })
       .filter((entry) => {
         if (!query) {
           return true;
         }
         const haystack = [
           entry.title,
+          entry.authorName,
           entry.excerpt,
           entry.body,
           entry.whoFor,
           ...entry.genres,
-          ...entry.similarGames
+          ...entry.relatedGames
         ]
           .filter(Boolean)
           .join(" ")
@@ -722,15 +778,6 @@ function HomePage({
           return true;
         }
         if (filters.genre && !entry.genres.includes(filters.genre)) {
-          return false;
-        }
-        if (filters.maxHours && Number(entry.playtimeHours || 0) > Number(filters.maxHours)) {
-          return false;
-        }
-        if (filters.soloOnly && !entry.soloFriendly) {
-          return false;
-        }
-        if (filters.controllerOnly && !entry.controllerSupport) {
           return false;
         }
         return true;
@@ -753,13 +800,11 @@ function HomePage({
     <div className="shell">
       <TopBar
         section={section}
-        onSectionChange={setSection}
         onToggleTheme={onToggleTheme}
         onToggleFx={onToggleFx}
         theme={theme}
         fxEnabled={fxEnabled}
       />
-      {apiError ? <p className="api-error">{apiError}</p> : null}
 
       <header className="hero">
         <HeroHoloFx enabled={fxEnabled} theme={theme} />
@@ -792,38 +837,13 @@ function HomePage({
             </option>
           ))}
         </select>
-        <input
-          type="number"
-          min="1"
-          value={filters.maxHours}
-          onChange={(event) => setFilters((prev) => ({ ...prev, maxHours: event.target.value }))}
-          placeholder="Max hours"
-        />
-        <label>
-          <input
-            type="checkbox"
-            checked={filters.soloOnly}
-            onChange={(event) => setFilters((prev) => ({ ...prev, soloOnly: event.target.checked }))}
-          />
-          Solo Friendly
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={filters.controllerOnly}
-            onChange={(event) =>
-              setFilters((prev) => ({ ...prev, controllerOnly: event.target.checked }))
-            }
-          />
-          Controller Support
-        </label>
         <button
           type="button"
           onClick={() => {
             setQuery("");
-            setSection("all");
             setSortBy("newest");
             setFilters(initialFilters);
+            navigate("/");
           }}
         >
           Clear all
@@ -832,20 +852,7 @@ function HomePage({
 
       <section className="meta-row">
         <p>{visibleItems.length} results</p>
-        <button onClick={() => setManagerOpen((open) => !open)}>
-          {managerOpen ? "Close Manager" : "Open Manager"}
-        </button>
       </section>
-
-      {managerOpen ? (
-        <ManagerPanel
-          form={form}
-          setForm={setForm}
-          onSubmit={onPublish}
-          draftSavedAt={draftSavedAt}
-          uploadEndpoint={uploadEndpoint}
-        />
-      ) : null}
 
       <main className="grid">
         {visibleItems.length > 0 ? (
@@ -881,12 +888,10 @@ function DetailPage({ content, theme, fxEnabled, onToggleTheme, onToggleFx }) {
       <div className="shell">
         <TopBar
           section="all"
-          onSectionChange={() => {}}
           onToggleTheme={onToggleTheme}
           onToggleFx={onToggleFx}
           theme={theme}
           fxEnabled={fxEnabled}
-          showHomeLink
         />
         <section className="detail-panel">
           <h1>Content not found</h1>
@@ -900,16 +905,15 @@ function DetailPage({ content, theme, fxEnabled, onToggleTheme, onToggleFx }) {
     <div className="shell">
       <TopBar
         section="all"
-        onSectionChange={() => {}}
         onToggleTheme={onToggleTheme}
         onToggleFx={onToggleFx}
         theme={theme}
         fxEnabled={fxEnabled}
-        showHomeLink
       />
       <article className="detail-panel">
-        <p className="type-pill">{entry.type === "video" ? "Video Review" : entry.type}</p>
+        <p className="type-pill">{entry.type}</p>
         <h1>{entry.title}</h1>
+        <p className="muted">By {entry.authorName}</p>
         <p className="lead">{entry.excerpt}</p>
         <img className="detail-hero-image" src={entry.imageUrl} alt={entry.title} />
         {entry.screenshots?.length ? (
@@ -927,7 +931,6 @@ function DetailPage({ content, theme, fxEnabled, onToggleTheme, onToggleFx }) {
             <span>Bard Score: {entry.bardScore ?? "TBD"}</span>
             <span>Build Quality: {entry.buildQuality ?? "TBD"}/10</span>
             <span>Respects Your Time: {entry.respectsYourTime ?? "TBD"}</span>
-            <span>Solo Friendly: {entry.soloFriendly ? "Yes" : "No"}</span>
           </div>
         ) : null}
         {entry.videoUrl ? (
@@ -946,26 +949,137 @@ function DetailPage({ content, theme, fxEnabled, onToggleTheme, onToggleFx }) {
   );
 }
 
+function AdminPage({
+  theme,
+  fxEnabled,
+  onToggleTheme,
+  onToggleFx,
+  form,
+  setForm,
+  onPublish,
+  draftSavedAt,
+  uploadEndpoint,
+  apiError,
+  isPublishing
+}) {
+  const [password, setPassword] = useState("");
+  const [authState, setAuthState] = useState({ checked: false, authenticated: false, error: "" });
+
+  useEffect(() => {
+    setMeta("Admin | Gaming With The Bard", "Protected content manager.");
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAdminSession()
+      .then((payload) => {
+        if (!cancelled) {
+          setAuthState({ checked: true, authenticated: Boolean(payload?.authenticated), error: "" });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAuthState({
+            checked: true,
+            authenticated: false,
+            error: error instanceof Error ? error.message : "Failed to verify admin session."
+          });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleLogin(event) {
+    event.preventDefault();
+    try {
+      await loginAdmin(password);
+      setAuthState({ checked: true, authenticated: true, error: "" });
+      setPassword("");
+    } catch (error) {
+      setAuthState({
+        checked: true,
+        authenticated: false,
+        error: error instanceof Error ? error.message : "Login failed."
+      });
+    }
+  }
+
+  async function handleLogout() {
+    await logoutAdmin();
+    setAuthState({ checked: true, authenticated: false, error: "" });
+  }
+
+  return (
+    <div className="shell">
+      <TopBar
+        section="all"
+        onToggleTheme={onToggleTheme}
+        onToggleFx={onToggleFx}
+        theme={theme}
+        fxEnabled={fxEnabled}
+      />
+      <section className="detail-panel">
+        <h1>Admin</h1>
+        {!authState.checked ? <p className="muted">Checking session...</p> : null}
+        {authState.error ? <p className="api-error">{authState.error}</p> : null}
+
+        {authState.checked && !authState.authenticated ? (
+          <form className="admin-login" onSubmit={handleLogin}>
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="Admin password"
+              required
+            />
+            <button type="submit">Sign in</button>
+          </form>
+        ) : null}
+
+        {authState.authenticated ? (
+          <>
+            <section className="meta-row">
+              <p className="muted">Authenticated. You can publish content from this page.</p>
+              <button type="button" onClick={handleLogout}>
+                Sign out
+              </button>
+            </section>
+            {apiError ? <p className="api-error">{apiError}</p> : null}
+            <ManagerPanel
+              form={form}
+              setForm={setForm}
+              onSubmit={onPublish}
+              draftSavedAt={draftSavedAt}
+              uploadEndpoint={uploadEndpoint}
+              isPublishing={isPublishing}
+            />
+          </>
+        ) : null}
+      </section>
+    </div>
+  );
+}
+
 function App() {
   const [saved, setSaved] = useState(readSavedContent);
   const [remoteContent, setRemoteContent] = useState([]);
   const [apiError, setApiError] = useState("");
   const [theme, setTheme] = useState(readTheme);
   const [fxEnabled, setFxEnabled] = useState(readFxEnabled);
-  const [managerOpen, setManagerOpen] = useState(false);
   const [section, setSection] = useState("all");
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState("newest");
   const [filters, setFilters] = useState(initialFilters);
   const [form, setForm] = useState(readDraft);
   const [draftSavedAt, setDraftSavedAt] = useState(Date.now());
+  const [isPublishing, setIsPublishing] = useState(false);
   const uploadEndpoint = import.meta.env.VITE_UPLOAD_ENDPOINT || "/upload-image.php";
 
   const content = useMemo(
     () =>
-      (USE_API ? remoteContent : [...saved, ...seedContent]).map((entry, index) =>
-        normalizeEntry(entry, index)
-      ),
+      (USE_API ? remoteContent : saved).map((entry, index) => normalizeEntry(entry, index)),
     [remoteContent, saved]
   );
 
@@ -1019,10 +1133,16 @@ function App() {
 
   async function publishEntry(event) {
     event.preventDefault();
+    if (isPublishing) {
+      return;
+    }
+    setApiError("");
+    setIsPublishing(true);
     const nextEntry = {
       id: `${form.type}-${Date.now()}`,
       type: form.type,
       title: form.title.trim(),
+      authorName: form.authorName.trim() || "Gaming With The Bard",
       excerpt: form.excerpt.trim(),
       body: form.body.trim(),
       screenshots: parseScreenshots(form.screenshotsRaw),
@@ -1031,17 +1151,33 @@ function App() {
       status: "published",
       createdAt: Date.now()
     };
-    if (!nextEntry.title || !nextEntry.excerpt) {
+    if (!nextEntry.title || !nextEntry.excerpt || !nextEntry.body) {
+      setApiError("Title, summary, and body are required.");
+      setIsPublishing(false);
+      return;
+    }
+    if (nextEntry.imageUrl && !isHttpUrl(nextEntry.imageUrl)) {
+      setApiError("Cover image URL must start with http:// or https://.");
+      setIsPublishing(false);
+      return;
+    }
+    if (nextEntry.videoUrl && !isHttpUrl(nextEntry.videoUrl)) {
+      setApiError("Video URL must start with http:// or https://.");
+      setIsPublishing(false);
+      return;
+    }
+    if (nextEntry.screenshots.some((url) => !isHttpUrl(url))) {
+      setApiError("Each screenshot URL must start with http:// or https://.");
+      setIsPublishing(false);
       return;
     }
     if (form.type === "review") {
       nextEntry.bardScore = form.bardScore ? Number(form.bardScore) : undefined;
       nextEntry.genres = normalizeList(form.genres);
+      nextEntry.relatedGames = normalizeList(form.relatedGames);
       nextEntry.platforms = form.platforms;
       nextEntry.playtimeHours = form.playtimeHours ? Number(form.playtimeHours) : undefined;
       nextEntry.difficulty = form.difficulty;
-      nextEntry.soloFriendly = form.soloFriendly;
-      nextEntry.controllerSupport = true;
       nextEntry.steamDeck = form.steamDeck;
       nextEntry.steamDeckFps = form.steamDeck ? form.steamDeckFps.trim() : "";
     }
@@ -1052,6 +1188,7 @@ function App() {
         setApiError("");
       } catch (error) {
         setApiError(error instanceof Error ? error.message : "Failed to publish via API.");
+        setIsPublishing(false);
         return;
       }
     } else {
@@ -1061,6 +1198,7 @@ function App() {
     }
 
     setForm(initialForm);
+    setIsPublishing(false);
   }
 
   return (
@@ -1084,14 +1222,6 @@ function App() {
               fxEnabled={fxEnabled}
               onToggleTheme={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
               onToggleFx={() => setFxEnabled((prev) => !prev)}
-              managerOpen={managerOpen}
-              setManagerOpen={setManagerOpen}
-              form={form}
-              setForm={setForm}
-              onPublish={publishEntry}
-              draftSavedAt={draftSavedAt}
-              uploadEndpoint={uploadEndpoint}
-              apiError={apiError}
             />
           }
         />
@@ -1115,6 +1245,24 @@ function App() {
               fxEnabled={fxEnabled}
               onToggleTheme={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
               onToggleFx={() => setFxEnabled((prev) => !prev)}
+            />
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <AdminPage
+              theme={theme}
+              fxEnabled={fxEnabled}
+              onToggleTheme={() => setTheme((prev) => (prev === "dark" ? "light" : "dark"))}
+              onToggleFx={() => setFxEnabled((prev) => !prev)}
+              form={form}
+              setForm={setForm}
+              onPublish={publishEntry}
+              draftSavedAt={draftSavedAt}
+              uploadEndpoint={uploadEndpoint}
+              apiError={apiError}
+              isPublishing={isPublishing}
             />
           }
         />
