@@ -149,7 +149,12 @@ function parseScreenshots(value) {
 }
 
 async function fetchContentList() {
-  const response = await fetch(`${API_BASE}/content/list.php`);
+  const response = await fetch(`${API_BASE}/content/list.php`, {
+    cache: "no-store",
+    headers: {
+      "Cache-Control": "no-cache"
+    }
+  });
   if (!response.ok) {
     throw new Error(`Failed to load content (${response.status})`);
   }
@@ -1262,21 +1267,42 @@ function App() {
     }
 
     let cancelled = false;
-    fetchContentList()
-      .then((items) => {
+
+    async function loadContent() {
+      try {
+        const items = await fetchContentList();
         if (!cancelled) {
           setRemoteContent(items);
           setApiError("");
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!cancelled) {
           setApiError(error instanceof Error ? error.message : "Failed to load content API.");
         }
-      });
+      }
+    }
+
+    loadContent();
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        loadContent();
+      }
+    }
+
+    function refreshFromBackForwardCache(event) {
+      if (event.persisted) {
+        loadContent();
+      }
+    }
+
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("pageshow", refreshFromBackForwardCache);
 
     return () => {
       cancelled = true;
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("pageshow", refreshFromBackForwardCache);
     };
   }, []);
 
