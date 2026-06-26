@@ -41,10 +41,10 @@ if ($slug === '') {
 }
 $slug .= '-' . bin2hex(random_bytes(3));
 
-$genres = json_encode(array_values(array_filter($data['genres'] ?? [], fn($x) => is_string($x) && $x !== '')));
-$platforms = json_encode(array_values(array_filter($data['platforms'] ?? [], fn($x) => is_string($x) && $x !== '')));
-$screenshots = json_encode(array_values(array_filter($data['screenshots'] ?? [], fn($x) => is_string($x) && $x !== '')));
-$relatedGames = json_encode(array_values(array_filter($data['relatedGames'] ?? [], fn($x) => is_string($x) && $x !== '')));
+$genres = encode_json_list($data['genres'] ?? []);
+$platforms = encode_json_list($data['platforms'] ?? []);
+$screenshots = encode_json_list($data['screenshots'] ?? []);
+$relatedGames = encode_json_list($data['relatedGames'] ?? []);
 $status = (string) ($data['status'] ?? 'published');
 
 if (!in_array($status, $allowedStatuses, true)) {
@@ -61,6 +61,8 @@ if ($videoUrl !== null && $videoUrl !== '' && !is_valid_http_url($videoUrl)) {
 }
 
 try {
+    $publishedAt = $status === 'published' ? date('Y-m-d H:i:s') : null;
+
     $statement = $conn->prepare(
         'INSERT INTO content (
           type, title, author_name, slug, excerpt, body, image_url, video_url, genres_json, platforms_json, screenshots_json,
@@ -69,7 +71,7 @@ try {
         ) VALUES (
           :type, :title, :author_name, :slug, :excerpt, :body, :image_url, :video_url, :genres_json, :platforms_json, :screenshots_json,
           :related_games_json, :bard_score, :build_quality, :respects_time, :steam_deck, :steam_deck_fps,
-          :status, NOW(), NOW(), CASE WHEN :publish_check = "published" THEN NOW() ELSE NULL END
+          :status, NOW(), NOW(), :published_at
         )'
     );
 
@@ -92,7 +94,7 @@ try {
         ':steam_deck' => isset($data['steamDeck']) ? ((bool) $data['steamDeck'] ? 1 : 0) : 0,
         ':steam_deck_fps' => $data['steamDeckFps'] ?? null,
         ':status' => $status,
-        ':publish_check' => $status
+        ':published_at' => $publishedAt
     ]);
 
     $id = (int) $conn->lastInsertId();

@@ -261,7 +261,7 @@ function normalizeEntry(entry, index) {
     ...entry,
     id,
     title,
-    slug: `${slugBase || "entry"}-${id}`,
+    slug: entry.slug || `${slugBase || "entry"}-${id}`,
     excerpt: entry.excerpt || "No summary yet.",
     authorName: entry.authorName || "Gaming With The Bard",
     body: entry.body || "",

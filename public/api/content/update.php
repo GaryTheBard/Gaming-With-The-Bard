@@ -13,10 +13,10 @@ if ($id <= 0) {
     respond(['error' => 'Missing numeric content id'], 400);
 }
 
-$genres = json_encode(array_values(array_filter($data['genres'] ?? [], fn($x) => is_string($x) && $x !== '')));
-$platforms = json_encode(array_values(array_filter($data['platforms'] ?? [], fn($x) => is_string($x) && $x !== '')));
-$screenshots = json_encode(array_values(array_filter($data['screenshots'] ?? [], fn($x) => is_string($x) && $x !== '')));
-$relatedGames = json_encode(array_values(array_filter($data['relatedGames'] ?? [], fn($x) => is_string($x) && $x !== '')));
+$genres = encode_json_list($data['genres'] ?? []);
+$platforms = encode_json_list($data['platforms'] ?? []);
+$screenshots = encode_json_list($data['screenshots'] ?? []);
+$relatedGames = encode_json_list($data['relatedGames'] ?? []);
 $allowedStatuses = ['draft', 'published'];
 
 if (isset($data['status']) && !in_array((string) $data['status'], $allowedStatuses, true)) {

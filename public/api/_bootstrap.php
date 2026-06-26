@@ -3,6 +3,26 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 
+register_shutdown_function(static function (): void {
+    $error = error_get_last();
+    if ($error === null) {
+        return;
+    }
+
+    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR];
+    if (!in_array($error['type'], $fatalTypes, true) || headers_sent()) {
+        return;
+    }
+
+    http_response_code(500);
+    echo json_encode([
+        'error' => 'Server error',
+        'details' => $error['message'],
+        'file' => basename((string) $error['file']),
+        'line' => $error['line']
+    ]);
+});
+
 function load_config(): array
 {
     $configFile = __DIR__ . DIRECTORY_SEPARATOR . 'config.php';
@@ -46,13 +66,29 @@ function is_valid_http_url(string $url): bool
     return (bool) preg_match('/^https?:\/\/.+/i', trim($url));
 }
 
+function filter_string_list($values): array
+{
+    if (!is_array($values)) {
+        return [];
+    }
+
+    return array_values(array_filter($values, static function ($value) {
+        return is_string($value) && $value !== '';
+    }));
+}
+
+function encode_json_list($values): string
+{
+    return json_encode(filter_string_list($values)) ?: '[]';
+}
+
 function normalize_youtube_url(string $url): string
 {
     $raw = trim($url);
     if ($raw === '') {
         return '';
     }
-    if (str_contains($raw, 'youtube.com/embed/')) {
+    if (strpos($raw, 'youtube.com/embed/') !== false) {
         return $raw;
     }
     if (preg_match('/youtu\.be\/([^?&\/]+)/i', $raw, $match)) {
