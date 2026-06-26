@@ -928,7 +928,7 @@ function HomePage({
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by title, genre, body copy, or similar games..."
+          placeholder="Search by title, genre, or similar games..."
         />
         <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
           <option value="newest">Newest</option>
