@@ -17,3 +17,10 @@ yarn-error.log*
 node_modules/
 dist/
 build/
+
+# Uploaded assets at runtime
+public/uploads/*
+!public/uploads/.gitkeep
+
+# Local API secrets
+public/api/config.php
