@@ -419,6 +419,35 @@ label {
   min-width: 260px;
 }
 
+.admin-existing {
+  margin-top: 1rem;
+}
+
+.admin-existing h3 {
+  margin: 0 0 0.5rem;
+}
+
+.admin-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.admin-list-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 0.65rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.admin-list-item p {
+  margin: 0.2rem 0 0;
+  font-size: 0.85rem;
+}
+
 .api-error {
   margin: 0 0 0.7rem;
   padding: 0.55rem 0.65rem;

@@ -207,12 +207,50 @@ async function createContentRecord(entry) {
   return payload;
 }
 
+async function updateContentRecord(entry) {
+  const response = await fetch(`${API_BASE}/content/update.php`, {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(API_WRITE_TOKEN ? { "X-API-Token": API_WRITE_TOKEN } : {})
+    },
+    body: JSON.stringify(entry)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const details = payload?.details ? `: ${payload.details}` : "";
+    throw new Error(`${payload?.error || "Update failed"} (${response.status})${details}`);
+  }
+  return payload;
+}
+
 function getNextImageTokenIndex(body) {
   const matches = [...(body || "").matchAll(/\bimg(\d+)\b/gi)];
   if (matches.length === 0) {
     return 0;
   }
   return matches.reduce((max, match) => Math.max(max, Number(match[1] || 0)), 0);
+}
+
+function toFormFromEntry(entry) {
+  return {
+    ...initialForm,
+    type: entry.type === "review" ? "review" : "article",
+    title: entry.title || "",
+    authorName: entry.authorName || "",
+    excerpt: entry.excerpt || "",
+    imageUrl: entry.imageUrl || "",
+    videoUrl: entry.videoUrl || "",
+    body: entry.body || "",
+    screenshotsRaw: Array.isArray(entry.screenshots) ? entry.screenshots.join("\n") : "",
+    bardScore: entry.bardScore ?? "",
+    genres: Array.isArray(entry.genres) ? entry.genres.join(", ") : "",
+    relatedGames: Array.isArray(entry.relatedGames) ? entry.relatedGames.join(", ") : "",
+    platforms: Array.isArray(entry.platforms) ? entry.platforms : [],
+    steamDeck: Boolean(entry.steamDeck),
+    steamDeckFps: entry.steamDeckFps || ""
+  };
 }
 
 function normalizeEntry(entry, index) {
@@ -496,7 +534,15 @@ function ContentCard({ entry }) {
   );
 }
 
-function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint, isPublishing }) {
+function ManagerPanel({
+  form,
+  setForm,
+  onSubmit,
+  draftSavedAt,
+  uploadEndpoint,
+  isPublishing,
+  submitLabel = "Publish Entry"
+}) {
   const [uploadState, setUploadState] = useState({ kind: "idle", message: "" });
 
   const previewEntry = {
@@ -701,7 +747,7 @@ function ManagerPanel({ form, setForm, onSubmit, draftSavedAt, uploadEndpoint, i
             </>
           ) : null}
           <button type="submit" disabled={isPublishing}>
-            {isPublishing ? "Publishing..." : "Publish Entry"}
+            {isPublishing ? "Saving..." : submitLabel}
           </button>
         </form>
         <div className="manager-preview">
@@ -1019,6 +1065,11 @@ function AdminPage({
   form,
   setForm,
   onPublish,
+  content,
+  editingId,
+  onEditEntry,
+  onResetDraft,
+  onCancelEdit,
   draftSavedAt,
   uploadEndpoint,
   apiError,
@@ -1103,10 +1154,22 @@ function AdminPage({
         {authState.authenticated ? (
           <>
             <section className="meta-row">
-              <p className="muted">Authenticated. You can publish content from this page.</p>
-              <button type="button" onClick={handleLogout}>
-                Sign out
-              </button>
+              <p className="muted">
+                {editingId ? "Editing existing entry." : "Authenticated. You can publish content from this page."}
+              </p>
+              <div className="meta-actions">
+                <button type="button" onClick={onResetDraft}>
+                  Reset draft
+                </button>
+                {editingId ? (
+                  <button type="button" onClick={onCancelEdit}>
+                    Cancel edit
+                  </button>
+                ) : null}
+                <button type="button" onClick={handleLogout}>
+                  Sign out
+                </button>
+              </div>
             </section>
             {apiError ? <p className="api-error">{apiError}</p> : null}
             <ManagerPanel
@@ -1116,7 +1179,30 @@ function AdminPage({
               draftSavedAt={draftSavedAt}
               uploadEndpoint={uploadEndpoint}
               isPublishing={isPublishing}
+              submitLabel={editingId ? "Save Changes" : "Publish Entry"}
             />
+            <section className="admin-existing">
+              <h3>Existing posts</h3>
+              {content.length === 0 ? (
+                <p className="muted">No posts yet.</p>
+              ) : (
+                <div className="admin-list">
+                  {content.map((entry) => (
+                    <article className="admin-list-item" key={`admin-${entry.id}`}>
+                      <div>
+                        <strong>{entry.title}</strong>
+                        <p className="muted">
+                          {entry.type} - {entry.authorName}
+                        </p>
+                      </div>
+                      <button type="button" onClick={() => onEditEntry(entry)}>
+                        Edit
+                      </button>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
           </>
         ) : null}
       </section>
@@ -1137,6 +1223,7 @@ function App() {
   const [form, setForm] = useState(readDraft);
   const [draftSavedAt, setDraftSavedAt] = useState(Date.now());
   const [isPublishing, setIsPublishing] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const uploadEndpoint = import.meta.env.VITE_UPLOAD_ENDPOINT || "/upload-image.php";
 
   const content = useMemo(
@@ -1201,7 +1288,6 @@ function App() {
     setApiError("");
     setIsPublishing(true);
     const nextEntry = {
-      id: `${form.type}-${Date.now()}`,
       type: form.type,
       title: form.title.trim(),
       authorName: form.authorName.trim() || "Gaming With The Bard",
@@ -1245,8 +1331,17 @@ function App() {
     }
     if (USE_API) {
       try {
-        const created = await createContentRecord(nextEntry);
-        setRemoteContent((prev) => [created.item || nextEntry, ...prev]);
+        if (editingId) {
+          await updateContentRecord({ ...nextEntry, id: Number(editingId) });
+          setRemoteContent((prev) =>
+            prev.map((entry) =>
+              String(entry.id) === String(editingId) ? { ...entry, ...nextEntry, id: entry.id, slug: entry.slug } : entry
+            )
+          );
+        } else {
+          const created = await createContentRecord(nextEntry);
+          setRemoteContent((prev) => [created.item || nextEntry, ...prev]);
+        }
         setApiError("");
       } catch (error) {
         setApiError(error instanceof Error ? error.message : "Failed to publish via API.");
@@ -1254,13 +1349,43 @@ function App() {
         return;
       }
     } else {
-      const nextSaved = [nextEntry, ...saved];
-      setSaved(nextSaved);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSaved));
+      if (editingId) {
+        const nextSaved = saved.map((entry) =>
+          String(entry.id) === String(editingId) ? { ...entry, ...nextEntry, id: entry.id, slug: entry.slug } : entry
+        );
+        setSaved(nextSaved);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSaved));
+      } else {
+        const createdLocal = { ...nextEntry, id: `${form.type}-${Date.now()}` };
+        const nextSaved = [createdLocal, ...saved];
+        setSaved(nextSaved);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSaved));
+      }
     }
 
     setForm(initialForm);
+    setEditingId(null);
     setIsPublishing(false);
+  }
+
+  function resetDraft() {
+    localStorage.removeItem(DRAFT_KEY);
+    setForm(initialForm);
+    setEditingId(null);
+    setApiError("");
+    setDraftSavedAt(Date.now());
+  }
+
+  function startEditing(entry) {
+    setForm(toFormFromEntry(entry));
+    setEditingId(entry.id);
+    setApiError("");
+  }
+
+  function cancelEditing() {
+    setEditingId(null);
+    setForm(initialForm);
+    setApiError("");
   }
 
   return (
@@ -1321,6 +1446,11 @@ function App() {
               form={form}
               setForm={setForm}
               onPublish={publishEntry}
+              content={content}
+              editingId={editingId}
+              onEditEntry={startEditing}
+              onResetDraft={resetDraft}
+              onCancelEdit={cancelEditing}
               draftSavedAt={draftSavedAt}
               uploadEndpoint={uploadEndpoint}
               apiError={apiError}
