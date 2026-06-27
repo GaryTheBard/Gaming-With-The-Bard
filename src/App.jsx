@@ -1,11 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrowserRouter, Link, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { seedContent } from "./seedData.js";
 
 const STORAGE_KEY = "gwtb-content-v1";
 const THEME_KEY = "gwtb-theme-v1";
 const FX_KEY = "gwtb-fx-v1";
 const DRAFT_KEY = "gwtb-draft-v1";
-const LOGO_PATH = "/GamingWithTheBardLogo.png";
+const LOGO_PATH = "/GamingWithTheBardLogo2.png";
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "/api";
 const USE_API = import.meta.env.VITE_USE_API === "true";
 const API_WRITE_TOKEN = import.meta.env.VITE_API_WRITE_TOKEN || "";
@@ -52,7 +53,11 @@ function readJsonStorage(key, fallback) {
 
 function readSavedContent() {
   const parsed = readJsonStorage(STORAGE_KEY, []);
-  return Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry === "object") : [];
+  const saved = Array.isArray(parsed) ? parsed.filter((entry) => entry && typeof entry === "object") : [];
+  if (saved.length > 0 || USE_API || seedContent.length === 0) {
+    return saved;
+  }
+  return seedContent;
 }
 
 function readTheme() {
@@ -66,9 +71,9 @@ function readTheme() {
 function readFxEnabled() {
   try {
     const saved = localStorage.getItem(FX_KEY);
-    return saved === null ? false : saved === "1";
+    return saved === null ? true : saved === "1";
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -92,6 +97,46 @@ function readDraft() {
     platforms: normalizedPlatforms,
     screenshotsRaw: normalizedScreenshots
   };
+}
+
+function formatPublishedDate(timestamp) {
+  const value = Number(timestamp);
+  if (!value) {
+    return "";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric"
+  }).format(date);
+}
+
+function getPublishedTimestamp(entry) {
+  return Number(entry.publishedAt || entry.createdAt || 0);
+}
+
+function DetailByline({ entry }) {
+  const timestamp = getPublishedTimestamp(entry);
+  const published = formatPublishedDate(timestamp);
+  const label = entry.type === "review" ? "Reviewed" : "Published";
+
+  return (
+    <p className="muted detail-byline">
+      By {entry.authorName}
+      {published ? (
+        <>
+          {" · "}
+          <time dateTime={new Date(timestamp).toISOString().slice(0, 10)}>
+            {label} {published}
+          </time>
+        </>
+      ) : null}
+    </p>
+  );
 }
 
 function slugify(value) {
@@ -287,7 +332,8 @@ function normalizeEntry(entry, index) {
       : Array.isArray(entry.similarGames)
         ? entry.similarGames
         : [],
-    createdAt: Number(entry.createdAt || 0)
+    createdAt: Number(entry.createdAt || 0),
+    publishedAt: Number(entry.publishedAt || entry.createdAt || 0)
   };
 }
 
@@ -306,6 +352,321 @@ function getEntryPath(entry) {
 
 function hasLinkedVideo(entry) {
   return Boolean((entry.videoUrl || "").trim());
+}
+
+function parseNumericScore(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getBardTier(score) {
+  if (score === null) {
+    return { label: "TBD", className: "tier-tbd" };
+  }
+  if (score >= 9) {
+    return { label: "Excellent", className: "tier-excellent" };
+  }
+  if (score >= 7) {
+    return { label: "Great", className: "tier-great" };
+  }
+  if (score >= 5) {
+    return { label: "Fair", className: "tier-fair" };
+  }
+  if (score >= 3) {
+    return { label: "Weak", className: "tier-weak" };
+  }
+  return { label: "Terrible", className: "tier-terrible" };
+}
+
+function formatScoreValue(score) {
+  if (score === null) {
+    return "—";
+  }
+  return Number.isInteger(score) ? String(score) : score.toFixed(1);
+}
+
+function BardScoreRing({ score, size = "md" }) {
+  const numericScore = parseNumericScore(score);
+  const tier = getBardTier(numericScore);
+  const radius = size === "lg" ? 38 : size === "sm" ? 16 : 24;
+  const stroke = size === "lg" ? 5 : size === "sm" ? 3 : 4;
+  const circumference = 2 * Math.PI * radius;
+  const progress = numericScore === null ? 0 : (numericScore / 10) * circumference;
+  const dimension = (radius + stroke) * 2;
+
+  return (
+    <div className={`score-ring score-ring-${size} ${tier.className}`} aria-hidden="true">
+      <svg viewBox={`0 0 ${dimension} ${dimension}`}>
+        <circle
+          className="score-ring-track"
+          cx={radius + stroke}
+          cy={radius + stroke}
+          r={radius}
+          strokeWidth={stroke}
+        />
+        <circle
+          className="score-ring-fill"
+          cx={radius + stroke}
+          cy={radius + stroke}
+          r={radius}
+          strokeWidth={stroke}
+          strokeDasharray={`${progress} ${circumference}`}
+          transform={`rotate(-90 ${radius + stroke} ${radius + stroke})`}
+        />
+      </svg>
+      <span className="score-ring-value">{formatScoreValue(numericScore)}</span>
+    </div>
+  );
+}
+
+function BardScorePanel({ entry }) {
+  const tier = getBardTier(parseNumericScore(entry.bardScore));
+
+  return (
+    <div className="score-panel" aria-label="Bard Score">
+      <BardScoreRing score={entry.bardScore} size="lg" />
+      <div className="score-panel-copy">
+        <span className="score-panel-label">Bard Score</span>
+        <span className={`score-panel-tier ${tier.className}`}>{tier.label}</span>
+      </div>
+    </div>
+  );
+}
+
+function ScreenshotLightbox({ images, title, startIndex, onClose }) {
+  const [index, setIndex] = useState(startIndex);
+  const closeRef = useRef(null);
+  const hasMultiple = images.length > 1;
+
+  useEffect(() => {
+    setIndex(startIndex);
+  }, [startIndex]);
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (!hasMultiple) {
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setIndex((current) => (current - 1 + images.length) % images.length);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setIndex((current) => (current + 1) % images.length);
+      }
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", onKeyDown);
+    closeRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [hasMultiple, images.length, onClose]);
+
+  function showPrevious() {
+    setIndex((current) => (current - 1 + images.length) % images.length);
+  }
+
+  function showNext() {
+    setIndex((current) => (current + 1) % images.length);
+  }
+
+  return (
+    <div
+      className="screenshot-lightbox"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`${title} screenshots`}
+      onClick={onClose}
+    >
+      <div className="screenshot-lightbox-panel" onClick={(event) => event.stopPropagation()}>
+        <div className="screenshot-lightbox-toolbar">
+          <p className="screenshot-lightbox-counter">
+            {index + 1} / {images.length}
+          </p>
+          <button ref={closeRef} type="button" className="screenshot-lightbox-close" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+        <div className="screenshot-lightbox-stage">
+          {hasMultiple ? (
+            <button type="button" className="carousel-btn lightbox-nav" onClick={showPrevious} aria-label="Previous screenshot">
+              ‹
+            </button>
+          ) : null}
+          <img src={images[index]} alt={`${title} screenshot ${index + 1}`} className="screenshot-lightbox-image" />
+          {hasMultiple ? (
+            <button type="button" className="carousel-btn lightbox-nav" onClick={showNext} aria-label="Next screenshot">
+              ›
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScreenshotCarousel({ images, title }) {
+  const trackRef = useRef(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [lightboxIndex, setLightboxIndex] = useState(null);
+  const [scrollState, setScrollState] = useState({ canPrev: false, canNext: false });
+
+  const closeLightbox = useCallback(() => {
+    setLightboxIndex(null);
+  }, []);
+
+  const syncCarousel = useCallback(() => {
+    const track = trackRef.current;
+    if (!track || images.length === 0) {
+      return;
+    }
+
+    const slides = [...track.querySelectorAll(".screenshot-slide")];
+    if (slides.length === 0) {
+      return;
+    }
+
+    const trackLeft = track.scrollLeft;
+    let nearest = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    slides.forEach((slide, index) => {
+      const distance = Math.abs(slide.offsetLeft - trackLeft);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = index;
+      }
+    });
+
+    setActiveIndex(nearest);
+    setScrollState({
+      canPrev: track.scrollLeft > 4,
+      canNext: track.scrollLeft + track.clientWidth < track.scrollWidth - 4
+    });
+  }, [images.length]);
+
+  useEffect(() => {
+    syncCarousel();
+    const track = trackRef.current;
+    if (!track) {
+      return undefined;
+    }
+
+    track.addEventListener("scroll", syncCarousel, { passive: true });
+    window.addEventListener("resize", syncCarousel);
+
+    return () => {
+      track.removeEventListener("scroll", syncCarousel);
+      window.removeEventListener("resize", syncCarousel);
+    };
+  }, [images, syncCarousel]);
+
+  function scrollToIndex(index) {
+    const track = trackRef.current;
+    if (!track) {
+      return;
+    }
+    const slide = track.querySelectorAll(".screenshot-slide")[index];
+    if (slide) {
+      slide.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+    }
+  }
+
+  function scrollByDirection(direction) {
+    const track = trackRef.current;
+    if (!track) {
+      return;
+    }
+    const slide = track.querySelector(".screenshot-slide");
+    const amount = slide ? slide.offsetWidth + 12 : track.clientWidth * 0.85;
+    track.scrollBy({ left: direction * amount, behavior: "smooth" });
+  }
+
+  if (!images.length) {
+    return null;
+  }
+
+  const showControls = images.length > 1;
+
+  return (
+    <section className="screenshot-section">
+      <div className="screenshot-section-head">
+        <h3>Screenshots</h3>
+        {showControls ? (
+          <p className="screenshot-counter" aria-live="polite">
+            {activeIndex + 1} / {images.length}
+          </p>
+        ) : null}
+      </div>
+      <div className="screenshot-carousel-wrap">
+        {showControls ? (
+          <button
+            type="button"
+            className="carousel-btn carousel-btn-prev"
+            aria-label="Previous screenshot"
+            disabled={!scrollState.canPrev}
+            onClick={() => scrollByDirection(-1)}
+          >
+            ‹
+          </button>
+        ) : null}
+        <div className="screenshot-carousel" ref={trackRef}>
+          {images.map((url, index) => (
+            <figure className="screenshot-slide" key={`${url}-${index}`}>
+              <button
+                type="button"
+                className="screenshot-thumb-btn"
+                aria-label={`Enlarge ${title} screenshot ${index + 1}`}
+                onClick={() => setLightboxIndex(index)}
+              >
+                <img src={url} alt="" loading="lazy" />
+              </button>
+            </figure>
+          ))}
+        </div>
+        {showControls ? (
+          <button
+            type="button"
+            className="carousel-btn carousel-btn-next"
+            aria-label="Next screenshot"
+            disabled={!scrollState.canNext}
+            onClick={() => scrollByDirection(1)}
+          >
+            ›
+          </button>
+        ) : null}
+      </div>
+      {showControls ? (
+        <div className="carousel-dots" role="tablist" aria-label="Screenshot navigation">
+          {images.map((url, index) => (
+            <button
+              key={`dot-${url}-${index}`}
+              type="button"
+              className={`carousel-dot ${index === activeIndex ? "is-active" : ""}`}
+              aria-label={`Go to screenshot ${index + 1}`}
+              aria-selected={index === activeIndex}
+              onClick={() => scrollToIndex(index)}
+            />
+          ))}
+        </div>
+      ) : null}
+      {lightboxIndex !== null ? (
+        <ScreenshotLightbox images={images} title={title} startIndex={lightboxIndex} onClose={closeLightbox} />
+      ) : null}
+    </section>
+  );
 }
 
 function parseBodySyntax(rawBody) {
@@ -516,26 +877,27 @@ function TopBar({ section, onToggleTheme, onToggleFx, theme, fxEnabled, staticPa
 }
 
 function ContentCard({ entry }) {
+  const ctaLabel = entry.type === "review" ? "View review" : "Read article";
+  const bardScore = parseNumericScore(entry.bardScore);
+
   return (
-    <article className="card">
-      <img className="thumb" src={entry.imageUrl} alt={entry.title} />
+    <Link className="card card-link" to={getEntryPath(entry)}>
+      <div className="card-media">
+        <img className="thumb" src={entry.imageUrl} alt="" />
+        {entry.type === "review" && bardScore !== null ? (
+          <span className="card-score-badge" aria-label={`Bard score ${formatScoreValue(bardScore)}`}>
+            {formatScoreValue(bardScore)}
+          </span>
+        ) : null}
+      </div>
       <div className="card-body">
         <p className="type-pill">{entry.type}</p>
         <h3 className="card-title">{entry.title}</h3>
         <p className="card-byline">By {entry.authorName}</p>
         <p className="card-excerpt">{entry.excerpt}</p>
-        {entry.type === "review" ? (
-          <div className="stats-grid">
-            <span>Bard {entry.bardScore ?? "TBD"}</span>
-            <span>Build {entry.buildQuality ?? "TBD"}/10</span>
-            <span>Time {entry.respectsYourTime ?? "TBD"}</span>
-          </div>
-        ) : null}
-        <Link className="read-more" to={getEntryPath(entry)}>
-          Read more
-        </Link>
+        <span className="card-cta">{ctaLabel} →</span>
       </div>
-    </article>
+    </Link>
   );
 }
 
@@ -765,6 +1127,77 @@ function ManagerPanel({
   );
 }
 
+function BardTierScale() {
+  const tiers = [
+    { label: "Excellent", range: "9.0 – 10", className: "tier-excellent" },
+    { label: "Great", range: "7.0 – 8.9", className: "tier-great" },
+    { label: "Fair", range: "5.0 – 6.9", className: "tier-fair" },
+    { label: "Weak", range: "3.0 – 4.9", className: "tier-weak" },
+    { label: "Terrible", range: "0 – 2.9", className: "tier-terrible" }
+  ];
+
+  return (
+    <section className="tier-scale-panel">
+      <h2>Bard Score tiers</h2>
+      <p className="muted">Bard Score is our editorial verdict on a 0–10 scale. These labels map directly to the score ring on each review.</p>
+      <ul className="tier-scale-list">
+        {tiers.map((tier) => (
+          <li key={tier.label} className={`tier-scale-item ${tier.className}`}>
+            <span className="tier-scale-range">{tier.range}</span>
+            <span className="tier-scale-label">{tier.label}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function BackLink({ to, label }) {
+  return (
+    <Link className="back-link" to={to}>
+      ← {label}
+    </Link>
+  );
+}
+
+function DetailMeta({ entry }) {
+  const hasGenres = entry.genres?.length > 0;
+  const hasPlatforms = entry.platforms?.length > 0;
+
+  if (!hasGenres && !hasPlatforms) {
+    return null;
+  }
+
+  return (
+    <div className="detail-meta">
+      {hasGenres ? (
+        <div className="detail-meta-group">
+          <span className="detail-meta-label">Genres</span>
+          <div className="meta-chips">
+            {entry.genres.map((genre) => (
+              <span className="meta-chip" key={genre}>
+                {genre}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+      {hasPlatforms ? (
+        <div className="detail-meta-group">
+          <span className="detail-meta-label">Platforms</span>
+          <div className="meta-chips">
+            {entry.platforms.map((platform) => (
+              <span className="meta-chip meta-chip-platform" key={platform}>
+                {platform}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function MethodologyPanel() {
   return (
     <section className="methodology-panel">
@@ -815,6 +1248,7 @@ function HowWeRatePage({ theme, fxEnabled, onToggleTheme, onToggleFx }) {
         <p className="lead">
           We score every game using the same rubric so the verdict is consistent and useful.
         </p>
+        <BardTierScale />
         <MethodologyPanel />
       </section>
     </div>
@@ -1007,6 +1441,7 @@ function DetailPage({ content, theme, fxEnabled, onToggleTheme, onToggleFx }) {
           fxEnabled={fxEnabled}
         />
         <section className="detail-panel">
+          <BackLink to="/" label="Back home" />
           <h1>Content not found</h1>
           <button onClick={() => navigate("/")}>Back home</button>
         </section>
@@ -1024,28 +1459,20 @@ function DetailPage({ content, theme, fxEnabled, onToggleTheme, onToggleFx }) {
         fxEnabled={fxEnabled}
       />
       <article className="detail-panel">
+        <BackLink
+          to={entry.type === "review" ? "/?section=review" : "/?section=article"}
+          label={entry.type === "review" ? "All reviews" : "All articles"}
+        />
         <p className="type-pill">{entry.type}</p>
         <h1>{entry.title}</h1>
-        <p className="muted">By {entry.authorName}</p>
+        <DetailByline entry={entry} />
         <p className="lead">{entry.excerpt}</p>
+        <DetailMeta entry={entry} />
         <img className="detail-hero-image" src={entry.imageUrl} alt={entry.title} />
         {entry.screenshots?.length ? (
-          <section className="screenshot-section">
-            <h3>Screenshots</h3>
-            <div className="screenshot-carousel">
-              {entry.screenshots.map((url, index) => (
-                <img key={`${url}-${index}`} src={url} alt={`${entry.title} screenshot ${index + 1}`} />
-              ))}
-            </div>
-          </section>
+          <ScreenshotCarousel images={entry.screenshots} title={entry.title} />
         ) : null}
-        {entry.type === "review" ? (
-          <div className="stats-grid detail-stats">
-            <span>Bard Score: {entry.bardScore ?? "TBD"}</span>
-            <span>Build Quality: {entry.buildQuality ?? "TBD"}/10</span>
-            <span>Respects Your Time: {entry.respectsYourTime ?? "TBD"}</span>
-          </div>
-        ) : null}
+        {entry.type === "review" ? <BardScorePanel entry={entry} /> : null}
         {entry.videoUrl ? (
           <figure className="embed-block">
             <iframe

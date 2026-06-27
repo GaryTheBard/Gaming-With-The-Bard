@@ -154,7 +154,10 @@ function map_content_row(array $row): array
         'steamDeck' => (bool) ((int) ($row['steam_deck'] ?? 0)),
         'steamDeckFps' => $row['steam_deck_fps'] ?? '',
         'status' => $row['status'],
-        'createdAt' => strtotime((string) $row['created_at']) * 1000
+        'createdAt' => strtotime((string) $row['created_at']) * 1000,
+        'publishedAt' => !empty($row['published_at'])
+            ? strtotime((string) $row['published_at']) * 1000
+            : strtotime((string) $row['created_at']) * 1000
     ];
 }
 
