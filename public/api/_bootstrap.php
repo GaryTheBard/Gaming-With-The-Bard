@@ -132,8 +132,20 @@ function db_connect(array $cfg)
     return $pdo;
 }
 
+function to_timestamp_ms($value): int
+{
+    if ($value === null || $value === '') {
+        return 0;
+    }
+    $parsed = strtotime((string) $value);
+    return $parsed !== false ? $parsed * 1000 : 0;
+}
+
 function map_content_row(array $row): array
 {
+    $createdAt = to_timestamp_ms($row['created_at'] ?? null);
+    $publishedAt = to_timestamp_ms($row['published_at'] ?? null);
+
     return [
         'id' => $row['id'],
         'type' => $row['type'],
@@ -150,14 +162,12 @@ function map_content_row(array $row): array
         'relatedGames' => json_decode($row['related_games_json'] ?? '[]', true) ?: [],
         'bardScore' => $row['bard_score'] !== null ? (float) $row['bard_score'] : null,
         'buildQuality' => $row['build_quality'] !== null ? (float) $row['build_quality'] : null,
-        'respectsYourTime' => $row['respects_time'],
+        'respectsYourTime' => $row['respects_time'] ?? null,
         'steamDeck' => (bool) ((int) ($row['steam_deck'] ?? 0)),
         'steamDeckFps' => $row['steam_deck_fps'] ?? '',
         'status' => $row['status'],
-        'createdAt' => strtotime((string) $row['created_at']) * 1000,
-        'publishedAt' => !empty($row['published_at'])
-            ? strtotime((string) $row['published_at']) * 1000
-            : strtotime((string) $row['created_at']) * 1000
+        'createdAt' => $createdAt,
+        'publishedAt' => $publishedAt > 0 ? $publishedAt : $createdAt
     ];
 }
 

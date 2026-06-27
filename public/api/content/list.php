@@ -26,5 +26,10 @@ try {
     respond(['error' => 'Query failed', 'details' => $error->getMessage()], 500);
 }
 
-$items = array_map('map_content_row', $rows);
+try {
+    $items = array_map('map_content_row', $rows);
+} catch (Throwable $error) {
+    respond(['error' => 'Mapping failed', 'details' => $error->getMessage()], 500);
+}
+
 respond(['items' => $items]);
