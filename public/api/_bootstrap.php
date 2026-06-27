@@ -6,26 +6,6 @@ header('Cache-Control: no-store, no-cache, must-revalidate');
 header('Pragma: no-cache');
 header('Expires: 0');
 
-register_shutdown_function(static function (): void {
-    $error = error_get_last();
-    if ($error === null) {
-        return;
-    }
-
-    $fatalTypes = [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR];
-    if (!in_array($error['type'], $fatalTypes, true) || headers_sent()) {
-        return;
-    }
-
-    http_response_code(500);
-    echo json_encode([
-        'error' => 'Server error',
-        'details' => $error['message'],
-        'file' => basename((string) $error['file']),
-        'line' => $error['line']
-    ]);
-});
-
 function load_config(): array
 {
     $configFile = __DIR__ . DIRECTORY_SEPARATOR . 'config.php';
@@ -47,10 +27,36 @@ function load_config(): array
     ];
 }
 
+function sanitize_for_json($value)
+{
+    if (is_array($value)) {
+        $clean = [];
+        foreach ($value as $key => $item) {
+            $clean[$key] = sanitize_for_json($item);
+        }
+        return $clean;
+    }
+
+    if (is_string($value) && function_exists('mb_convert_encoding')) {
+        return mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+    }
+
+    return $value;
+}
+
 function respond(array $payload, int $status = 200): void
 {
     http_response_code($status);
-    echo json_encode($payload);
+    $json = json_encode(sanitize_for_json($payload));
+    if ($json === false) {
+        http_response_code(500);
+        echo json_encode([
+            'error' => 'JSON encode failed',
+            'details' => json_last_error_msg()
+        ]);
+        exit;
+    }
+    echo $json;
     exit;
 }
 
@@ -132,8 +138,33 @@ function db_connect(array $cfg)
     return $pdo;
 }
 
-function to_timestamp_ms($value): int
+function row_value(array $row, string $key, $default = null)
 {
+    return array_key_exists($key, $row) ? $row[$key] : $default;
+}
+
+function row_json_list(array $row, string $key): array
+{
+    $raw = row_value($row, $key, '[]');
+    if (is_array($raw)) {
+        return $raw;
+    }
+    $decoded = json_decode((string) $raw, true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+function row_float(array $row, string $key)
+{
+    $value = row_value($row, $key);
+    if ($value === null || $value === '') {
+        return null;
+    }
+    return (float) $value;
+}
+
+function row_timestamp_ms(array $row, string $key)
+{
+    $value = row_value($row, $key);
     if ($value === null || $value === '') {
         return 0;
     }
@@ -143,31 +174,30 @@ function to_timestamp_ms($value): int
 
 function map_content_row(array $row): array
 {
-    $createdAt = to_timestamp_ms($row['created_at'] ?? null);
-    $publishedAt = to_timestamp_ms($row['published_at'] ?? null);
+    $createdAt = row_timestamp_ms($row, 'created_at');
 
     return [
-        'id' => $row['id'],
-        'type' => $row['type'],
-        'title' => $row['title'],
-        'authorName' => $row['author_name'] ?? 'Gaming With The Bard',
-        'slug' => $row['slug'],
-        'excerpt' => $row['excerpt'],
-        'body' => $row['body'],
-        'imageUrl' => $row['image_url'],
-        'videoUrl' => $row['video_url'],
-        'genres' => json_decode($row['genres_json'] ?? '[]', true) ?: [],
-        'platforms' => json_decode($row['platforms_json'] ?? '[]', true) ?: [],
-        'screenshots' => json_decode($row['screenshots_json'] ?? '[]', true) ?: [],
-        'relatedGames' => json_decode($row['related_games_json'] ?? '[]', true) ?: [],
-        'bardScore' => $row['bard_score'] !== null ? (float) $row['bard_score'] : null,
-        'buildQuality' => $row['build_quality'] !== null ? (float) $row['build_quality'] : null,
-        'respectsYourTime' => $row['respects_time'] ?? null,
-        'steamDeck' => (bool) ((int) ($row['steam_deck'] ?? 0)),
-        'steamDeckFps' => $row['steam_deck_fps'] ?? '',
-        'status' => $row['status'],
+        'id' => row_value($row, 'id'),
+        'type' => row_value($row, 'type'),
+        'title' => row_value($row, 'title'),
+        'authorName' => row_value($row, 'author_name', 'Gaming With The Bard'),
+        'slug' => row_value($row, 'slug'),
+        'excerpt' => row_value($row, 'excerpt', ''),
+        'body' => row_value($row, 'body', ''),
+        'imageUrl' => row_value($row, 'image_url'),
+        'videoUrl' => row_value($row, 'video_url'),
+        'genres' => row_json_list($row, 'genres_json'),
+        'platforms' => row_json_list($row, 'platforms_json'),
+        'screenshots' => row_json_list($row, 'screenshots_json'),
+        'relatedGames' => row_json_list($row, 'related_games_json'),
+        'bardScore' => row_float($row, 'bard_score'),
+        'buildQuality' => row_float($row, 'build_quality'),
+        'respectsYourTime' => row_value($row, 'respects_time'),
+        'steamDeck' => (bool) ((int) row_value($row, 'steam_deck', 0)),
+        'steamDeckFps' => (string) row_value($row, 'steam_deck_fps', ''),
+        'status' => row_value($row, 'status', 'published'),
         'createdAt' => $createdAt,
-        'publishedAt' => $publishedAt > 0 ? $publishedAt : $createdAt
+        'publishedAt' => row_timestamp_ms($row, 'published_at') ?: $createdAt
     ];
 }
 

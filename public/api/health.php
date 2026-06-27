@@ -12,12 +12,27 @@ try {
     $published = $conn->query("SELECT COUNT(*) AS total FROM content WHERE status = 'published'");
     $publishedRow = $published ? $published->fetch() : ['total' => 0];
 
+    $mapOk = false;
+    $mapError = null;
+    $sample = $conn->query('SELECT * FROM content ORDER BY created_at DESC LIMIT 1');
+    $sampleRow = $sample ? $sample->fetch() : false;
+    if ($sampleRow) {
+        try {
+            map_content_row($sampleRow);
+            $mapOk = true;
+        } catch (Throwable $error) {
+            $mapError = $error->getMessage();
+        }
+    }
+
     respond([
         'ok' => true,
         'phpVersion' => PHP_VERSION,
         'dbConnected' => true,
         'contentTotal' => (int) ($row['total'] ?? 0),
-        'publishedTotal' => (int) ($publishedRow['total'] ?? 0)
+        'publishedTotal' => (int) ($publishedRow['total'] ?? 0),
+        'mapOk' => $mapOk,
+        'mapError' => $mapError
     ]);
 } catch (Throwable $error) {
     respond([

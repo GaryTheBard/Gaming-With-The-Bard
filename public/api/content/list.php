@@ -22,14 +22,14 @@ try {
     }
     $statement->execute();
     $rows = $statement->fetchAll();
+    $items = [];
+    foreach ($rows as $row) {
+        $items[] = map_content_row($row);
+    }
+    respond(['items' => $items]);
 } catch (Throwable $error) {
-    respond(['error' => 'Query failed', 'details' => $error->getMessage()], 500);
+    respond([
+        'error' => 'List failed',
+        'details' => $error->getMessage()
+    ], 500);
 }
-
-try {
-    $items = array_map('map_content_row', $rows);
-} catch (Throwable $error) {
-    respond(['error' => 'Mapping failed', 'details' => $error->getMessage()], 500);
-}
-
-respond(['items' => $items]);
